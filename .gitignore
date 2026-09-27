@@ -1,0 +1,25 @@
+# Build output (every preset builds under build/)
+/build/
+
+# Private design notes
+/docs/
+
+# Machine-local CMake presets
+CMakeUserPresets.json
+
+# clangd
+/.cache/
+/compile_commands.json
+
+# Editors
+/.vscode/
+/.vs/
+/.idea/
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log

@@ -1,0 +1,17 @@
+BasedOnStyle: Google
+ColumnLimit: 100
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# <windows.h> must precede every other Windows SDK header.
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<windows\.h>$'
+    Priority: 1
+  - Regex: '^<[a-z0-9_]+\.h>$'
+    Priority: 2
+    SortPriority: 2
+  - Regex: '^<[a-z_]+>$'
+    Priority: 3
+  - Regex: '^"'
+    Priority: 4
