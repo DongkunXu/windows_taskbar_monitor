@@ -15,6 +15,21 @@ namespace {
 
 constexpr double kZeroCelsiusInKelvin = 273.15;
 
+// English counter paths, since counter names are localized on non-English systems.
+constexpr wchar_t kUsagePath[] = L"\\Processor Information(_Total)\\% Processor Utility";
+constexpr wchar_t kActualClockPath[] = L"\\Processor Information(_Total)\\Actual Frequency";
+constexpr wchar_t kNominalClockPath[] = L"\\Processor Information(_Total)\\Processor Frequency";
+constexpr wchar_t kPerformancePath[] = L"\\Processor Information(_Total)\\% Processor Performance";
+constexpr wchar_t kThermalPrecisePath[] =
+    L"\\Thermal Zone Information(*)\\High Precision Temperature";                  // 0.1 K
+constexpr wchar_t kThermalPath[] = L"\\Thermal Zone Information(*)\\Temperature";  // 1 K
+constexpr wchar_t kEnergyPath[] = L"\\Energy Meter(*)\\Power";
+
+// Right after logon some counter providers may not be loaded yet. Missing counters are retried
+// once a minute for the first ten minutes, then treated as absent on this machine.
+constexpr int kRetryEverySamples = 30;
+constexpr int kMaxRetries = 10;
+
 bool IsValid(DWORD status) {
   return status == PDH_CSTATUS_VALID_DATA || status == PDH_CSTATUS_NEW_DATA;
 }
@@ -54,39 +69,68 @@ BatteryFlow ReadBattery() {
 }  // namespace
 
 void Sensors::Open() {
-  PDH_HQUERY query = nullptr;
-  const PDH_STATUS status = PdhOpenQueryW(nullptr, 0, &query);
-  if (status != ERROR_SUCCESS) {
-    log::Error(L"PdhOpenQuery failed: 0x%08lX", static_cast<unsigned long>(status));
-    return;
-  }
-  query_.reset(query);
-
-  Add(L"\\Processor Information(_Total)\\% Processor Utility", &usage_);
-  if (!Add(L"\\Processor Information(_Total)\\Actual Frequency", &actual_clock_)) {
-    Add(L"\\Processor Information(_Total)\\Processor Frequency", &nominal_clock_);
-    Add(L"\\Processor Information(_Total)\\% Processor Performance", &performance_pct_);
-  }
-  if (!Add(L"\\Thermal Zone Information(*)\\High Precision Temperature", &thermal_) &&
-      Add(L"\\Thermal Zone Information(*)\\Temperature", &thermal_)) {
-    thermal_units_per_kelvin_ = 1.0;
-  }
-  Add(L"\\Energy Meter(*)\\Power", &energy_);
-
+  retries_left_ = kMaxRetries;
+  first_attempt_ = true;
+  AddMissingCounters();
+  first_attempt_ = false;
   // Rate counters need a baseline sample before the first real read.
-  PdhCollectQueryData(query_.get());
+  if (query_) PdhCollectQueryData(query_.get());
 }
 
-bool Sensors::Add(const wchar_t* path, PDH_HCOUNTER* counter) {
-  // English names, since counter names are localized on non-English systems.
+void Sensors::AddMissingCounters() {
+  if (!query_) {
+    PDH_HQUERY query = nullptr;
+    const PDH_STATUS status = PdhOpenQueryW(nullptr, 0, &query);
+    if (status != ERROR_SUCCESS) {
+      if (first_attempt_) {
+        log::Error(L"PdhOpenQuery failed: 0x%08lX", static_cast<unsigned long>(status));
+      }
+      return;
+    }
+    query_.reset(query);
+  }
+
+  AddIfMissing(kUsagePath, &usage_);
+  if (!HasClock() && !AddIfMissing(kActualClockPath, &actual_clock_)) {
+    AddIfMissing(kNominalClockPath, &nominal_clock_);
+    AddIfMissing(kPerformancePath, &performance_pct_);
+  }
+  if (!thermal_) {
+    if (AddIfMissing(kThermalPrecisePath, &thermal_)) {
+      thermal_units_per_kelvin_ = 10.0;
+    } else if (AddIfMissing(kThermalPath, &thermal_)) {
+      thermal_units_per_kelvin_ = 1.0;
+    }
+  }
+  AddIfMissing(kEnergyPath, &energy_);
+}
+
+// Logs a missing counter once, at startup, and again only if a later retry finds it.
+bool Sensors::AddIfMissing(const wchar_t* path, PDH_HCOUNTER* counter) {
+  if (*counter) return true;
   const PDH_STATUS status = PdhAddEnglishCounterW(query_.get(), path, 0, counter);
-  if (status == ERROR_SUCCESS) return true;
+  if (status == ERROR_SUCCESS) {
+    if (!first_attempt_) log::Info(L"counter now available: %ls", path);
+    return true;
+  }
   *counter = nullptr;
-  log::Info(L"counter unavailable: %ls (0x%08lX)", path, static_cast<unsigned long>(status));
+  if (first_attempt_) {
+    log::Info(L"counter unavailable: %ls (0x%08lX)", path, static_cast<unsigned long>(status));
+  }
   return false;
 }
 
+bool Sensors::HasClock() const { return actual_clock_ || (nominal_clock_ && performance_pct_); }
+
+bool Sensors::Complete() const { return query_ && usage_ && HasClock() && thermal_ && energy_; }
+
 Metrics Sensors::Read() {
+  if (!Complete() && retries_left_ > 0 && ++samples_since_retry_ >= kRetryEverySamples) {
+    samples_since_retry_ = 0;
+    --retries_left_;
+    AddMissingCounters();
+  }
+
   Metrics m;
   m.memory_load_pct = ReadMemoryLoad();
   m.battery = ReadBattery();

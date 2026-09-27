@@ -36,7 +36,9 @@
 
 - 运行 `TaskbarMonitor.exe`，同一时间只会有一个实例。
 - 左键点击：打开任务管理器。
-- 右键点击：切换"Start with Windows"（开机自启），或退出（Exit）。
+- 右键点击：切换"Start with Windows"（开机自启），或退出（Exit）。开机自启登记的是可执行文件当前所在的路径，所以请从安装后的副本开启（见[构建](#构建)），不要从构建目录开启。
+
+运行期间它会自己照看自己：Explorer 重启后自动重新挂到任务栏；熄屏、锁屏、会话断开或全屏应用在前台时停止采样，之后自动恢复。
 
 ## 程序会写入的内容
 
@@ -45,7 +47,7 @@
 | `%LOCALAPPDATA%\TaskbarMonitor\taskbar-monitor.log`（及 `.log.1`） | 错误和状态切换 | 单文件到 64 KB 自动轮转，总量不超过 128 KB |
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\TaskbarMonitor` | 开机自启 | 在右键菜单里关闭开机自启时删除，同时删除系统"启动应用"开关的对应项 |
 
-彻底移除：先在右键菜单里关闭开机自启并退出，再删除可执行文件和 `%LOCALAPPDATA%\TaskbarMonitor` 目录。
+彻底移除：先在右键菜单里关闭开机自启并退出，再删除 `%LOCALAPPDATA%\Programs\TaskbarMonitor`（安装的可执行文件）和 `%LOCALAPPDATA%\TaskbarMonitor`（日志）两个目录。
 
 ## 构建
 
@@ -59,9 +61,10 @@ winget install MartinStorsjo.LLVM-MinGW.UCRT Kitware.CMake Ninja-build.Ninja
 cmake --preset release
 cmake --build --preset release
 ctest --preset release
+cmake --install build/release
 ```
 
-产物是 `build/release/TaskbarMonitor.exe`；调试版用 `debug` preset。所有构建输出都在 `build/` 下，删掉这个目录即可清理干净。
+最后一步把可执行文件复制到 `%LOCALAPPDATA%\Programs\TaskbarMonitor\TaskbarMonitor.exe`，执行前请先退出正在运行的副本。调试版用 `debug` preset。所有构建输出都在 `build/` 下，删掉这个目录即可清理干净。
 
 ## 目录结构
 

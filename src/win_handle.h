@@ -30,6 +30,9 @@ class Unique {
     handle_ = handle;
   }
 
+  // Gives up ownership without closing.
+  T release() { return std::exchange(handle_, T{}); }
+
  private:
   T handle_{};
 };

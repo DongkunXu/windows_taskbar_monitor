@@ -11,8 +11,8 @@
 namespace tbm {
 
 // Owns the components and reacts to system events through a hidden top-level window:
-// Explorer restarts, display/setting changes, display power, session lock, and the overlay's
-// mouse actions.
+// Explorer restarts, display/setting changes, display power, session lock and disconnect, and
+// the overlay's mouse actions.
 class App {
  public:
   int Run(HINSTANCE instance);
@@ -25,6 +25,8 @@ class App {
   void OnDestroy();
   void OnSample();
   void Attach();
+  void ScheduleAttachRetry();
+  void CancelAttachRetry();
   void UpdateSampling();
   void ShowMenu(POINT point);
 
@@ -41,7 +43,8 @@ class App {
   bool session_notification_ = false;
   bool display_on_ = true;
   bool session_locked_ = false;
-  bool retrying_attach_ = false;
+  bool session_connected_ = true;
+  UINT retry_delay_ms_ = 0;  // Current re-attach back-off; 0 while attached.
 };
 
 }  // namespace tbm

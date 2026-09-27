@@ -18,12 +18,16 @@ namespace tbm {
 // Not thread-safe: owned by the sampler thread.
 class Sensors {
  public:
-  // Builds the PDH query. Counters missing on this machine are logged once and read as empty.
+  // Builds the PDH query. Missing counters read as empty; they are retried for a while in case
+  // their provider was not loaded yet, then given up.
   void Open();
   Metrics Read();
 
  private:
-  bool Add(const wchar_t* path, PDH_HCOUNTER* counter);
+  void AddMissingCounters();
+  bool AddIfMissing(const wchar_t* path, PDH_HCOUNTER* counter);
+  bool HasClock() const;
+  bool Complete() const;
   std::optional<double> Value(PDH_HCOUNTER counter) const;
   // Calls `visit(name, value)` for each valid instance of a wildcard counter.
   template <typename Visit>
@@ -42,6 +46,10 @@ class Sensors {
   double thermal_units_per_kelvin_ = 10.0;  // "High Precision Temperature" is in 0.1 K.
   PDH_HCOUNTER energy_ = nullptr;
   std::vector<BYTE> instances_;  // Reused buffer for wildcard counters; grows once.
+
+  bool first_attempt_ = true;
+  int retries_left_ = 0;
+  int samples_since_retry_ = 0;
 };
 
 }  // namespace tbm

@@ -23,6 +23,7 @@ class Sampler {
   Sampler& operator=(const Sampler&) = delete;
 
   bool Start(HWND target, UINT message);
+  // Waits a bounded time for the thread; call only when the process is about to exit.
   void Stop();
   void SetActive(bool active);
   Metrics Latest() const;

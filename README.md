@@ -36,7 +36,9 @@ The readout is a layered child window of the taskbar, so it hides and moves toge
 
 - Run `TaskbarMonitor.exe`. Only one instance runs at a time.
 - Left-click: open Task Manager.
-- Right-click: toggle "Start with Windows", or exit.
+- Right-click: toggle "Start with Windows", or exit. "Start with Windows" registers the executable's current path, so turn it on from the installed copy (see [Building](#building)), not from the build folder.
+
+It looks after itself while running: it re-attaches when Explorer restarts, stops sampling while the display is off, the session is locked or disconnected, or a full-screen app is in front, and resumes on its own afterwards.
 
 ## What it writes
 
@@ -45,7 +47,7 @@ The readout is a layered child window of the taskbar, so it hides and moves toge
 | `%LOCALAPPDATA%\TaskbarMonitor\taskbar-monitor.log` (and `.log.1`) | Errors and state transitions | Rotates at 64 KB per file, 128 KB at most |
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\TaskbarMonitor` | Start with Windows | Removed when "Start with Windows" is turned off in the menu, together with the matching entry of the system's Startup apps switch |
 
-To remove it completely: turn off "Start with Windows" in the menu and exit, then delete the executable and the `%LOCALAPPDATA%\TaskbarMonitor` folder.
+To remove it completely: turn off "Start with Windows" in the menu and exit, then delete `%LOCALAPPDATA%\Programs\TaskbarMonitor` (the installed executable) and `%LOCALAPPDATA%\TaskbarMonitor` (the log).
 
 ## Building
 
@@ -59,9 +61,10 @@ winget install MartinStorsjo.LLVM-MinGW.UCRT Kitware.CMake Ninja-build.Ninja
 cmake --preset release
 cmake --build --preset release
 ctest --preset release
+cmake --install build/release
 ```
 
-The executable is `build/release/TaskbarMonitor.exe`; use the `debug` preset for a debug build. All build output goes under `build/`, so deleting that folder cleans everything.
+The last step copies the executable to `%LOCALAPPDATA%\Programs\TaskbarMonitor\TaskbarMonitor.exe`; exit a running copy first. Use the `debug` preset for a debug build. All build output goes under `build/`, so deleting that folder cleans everything.
 
 ## Layout
 

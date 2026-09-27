@@ -43,6 +43,7 @@ class Overlay {
   bool EnsureSurface(SIZE size);
   bool Render(const Cells& cells, bool light_theme);
   void Hide();
+  void ReportFailure(const wchar_t* operation);
 
   HWND hwnd_ = nullptr;
   HWND owner_ = nullptr;
@@ -68,7 +69,8 @@ class Overlay {
   RECT rect_{};
   bool light_theme_ = false;
   bool visible_ = false;
-  bool stale_ = true;  // Forces the next Show() to redraw.
+  bool stale_ = true;              // Forces the next Show() to redraw.
+  bool failure_reported_ = false;  // Logged once per failure streak, until drawing recovers.
 };
 
 }  // namespace tbm

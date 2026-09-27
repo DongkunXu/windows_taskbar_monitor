@@ -44,7 +44,11 @@ target_include_directories(TaskbarMonitor PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/ge
 target_compile_options(TaskbarMonitor PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-municode>)
 target_link_options(TaskbarMonitor PRIVATE -municode)
 target_link_libraries(TaskbarMonitor PRIVATE
-  tbm_format pdh powrprof wtsapi32 shell32 gdi32 user32 advapi32)
+  tbm_format pdh powrprof wtsapi32 shell32 ole32 gdi32 user32 advapi32)
+
+# A single self-contained executable. The presets install it per user under
+# %LOCALAPPDATA%\Programs\TaskbarMonitor, a stable path for "Start with Windows".
+install(TARGETS TaskbarMonitor RUNTIME DESTINATION .)
 
 if(TBM_BUILD_TESTS)
   enable_testing()

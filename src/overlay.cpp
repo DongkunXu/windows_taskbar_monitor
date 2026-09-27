@@ -70,7 +70,7 @@ bool Overlay::Create(HINSTANCE instance, const Taskbar& taskbar, HWND owner) {
   owner_ = owner;
   if (!dc_) dc_.reset(CreateCompatibleDC(nullptr));
   if (!dc_) {
-    log::Error(L"overlay: CreateCompatibleDC failed");
+    ReportFailure(L"CreateCompatibleDC");
     return false;
   }
   // A child of Explorer's taskbar window: Explorer then shows, hides, moves and clips it along
@@ -78,7 +78,7 @@ bool Overlay::Create(HINSTANCE instance, const Taskbar& taskbar, HWND owner) {
   CreateWindowExW(WS_EX_LAYERED | WS_EX_NOACTIVATE, kClassName, L"", WS_CHILD | WS_CLIPSIBLINGS, 0,
                   0, 0, 0, taskbar.window(), nullptr, instance, this);
   if (!hwnd_) {
-    log::Error(L"overlay: CreateWindowEx failed: %lu", GetLastError());
+    ReportFailure(L"CreateWindowEx");
     return false;
   }
   rect_ = {};
@@ -135,7 +135,7 @@ bool Overlay::UpdateFonts(UINT dpi) {
   UniqueFont text_font(CreateUiFont(kTextFontFace, dpi));
   UniqueFont icon_font(CreateUiFont(kIconFontFace, dpi));
   if (!text_font || !icon_font) {
-    log::Error(L"overlay: CreateFont failed");
+    ReportFailure(L"CreateFont");
     return false;
   }
 
@@ -188,7 +188,7 @@ bool Overlay::EnsureSurface(SIZE size) {
   void* bits = nullptr;
   UniqueBitmap bitmap(CreateDIBSection(dc_.get(), &info, DIB_RGB_COLORS, &bits, nullptr, 0));
   if (!bitmap) {
-    log::Error(L"overlay: CreateDIBSection %ldx%ld failed", size.cx, size.cy);
+    ReportFailure(L"CreateDIBSection");
     return false;
   }
   bitmap_ = std::move(bitmap);
@@ -243,13 +243,24 @@ bool Overlay::Render(const Cells& cells, bool light_theme) {
   POINT origin{0, 0};
   if (!UpdateLayeredWindow(hwnd_, nullptr, nullptr, &size, dc_.get(), &origin, 0, &blend,
                            ULW_ALPHA)) {
-    log::Error(L"overlay: UpdateLayeredWindow failed: %lu", GetLastError());
+    ReportFailure(L"UpdateLayeredWindow");
     return false;
   }
   shown_ = cells;
   light_theme_ = light_theme;
   stale_ = false;
+  if (failure_reported_) {
+    log::Info(L"overlay: drawing recovered");
+    failure_reported_ = false;
+  }
   return true;
+}
+
+// A failure that persists would otherwise be logged on every sample.
+void Overlay::ReportFailure(const wchar_t* operation) {
+  if (failure_reported_) return;
+  log::Error(L"overlay: %ls failed: %lu", operation, GetLastError());
+  failure_reported_ = true;
 }
 
 LRESULT CALLBACK Overlay::WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {

@@ -1,8 +1,11 @@
 #include "app.h"
 
+#include <objbase.h>
 #include <shellapi.h>
 #include <windowsx.h>
 #include <wtsapi32.h>
+
+#include <algorithm>
 
 #include "autostart.h"
 #include "log.h"
@@ -13,15 +16,35 @@ namespace {
 
 constexpr wchar_t kClassName[] = L"TaskbarMonitorApp";
 
+// Re-attach attempts back off from 2 s to 1 min, so a missing or crash-looping taskbar never
+// keeps the process busy. The timer only exists while detached.
 constexpr UINT_PTR kRetryTimerId = 1;
-constexpr UINT kRetryMs = 5000;  // Only runs while no taskbar is available.
-constexpr ULONG kRetryToleranceMs = 1000;
+constexpr UINT kFirstRetryMs = 2000;
+constexpr UINT kMaxRetryMs = 60000;
 
 enum MenuCommand : UINT { kCommandAutostart = 1, kCommandExit };
 
 // GUID_SESSION_DISPLAY_STATUS: display on/off/dimmed for this session.
 constexpr GUID kSessionDisplayStatus = {
     0x2b84c20e, 0xad23, 0x4ddf, {0x93, 0xdb, 0x05, 0xff, 0xbd, 0x7e, 0xfc, 0xa5}};
+
+DWORD WINAPI OpenTaskManagerThread(void*) {
+  const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+  ShellExecuteW(nullptr, nullptr, L"taskmgr.exe", nullptr, nullptr, SW_SHOWNORMAL);
+  if (SUCCEEDED(com)) CoUninitialize();
+  return 0;
+}
+
+// ShellExecute can block, e.g. on a UAC prompt, and the UI thread shares Explorer's input queue,
+// so the launch runs on a short-lived thread of its own.
+void OpenTaskManager() {
+  HANDLE thread = CreateThread(nullptr, 0, &OpenTaskManagerThread, nullptr, 0, nullptr);
+  if (thread) {
+    CloseHandle(thread);
+  } else {
+    log::Error(L"starting Task Manager failed: %lu", GetLastError());
+  }
+}
 
 }  // namespace
 
@@ -88,12 +111,16 @@ LRESULT App::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
       return 0;
 
     case kMsgOverlayLost:
+      // Explorer usually announces its new taskbar with TaskbarCreated; the retry covers the rest.
       log::Info(L"overlay lost");
-      Attach();
+      ScheduleAttachRetry();
       return 0;
 
     case WM_TIMER:
-      if (wparam == kRetryTimerId) Attach();
+      if (wparam == kRetryTimerId) {
+        KillTimer(hwnd_, kRetryTimerId);  // One-shot; Attach() reschedules on failure.
+        Attach();
+      }
       return 0;
 
     case WM_SETTINGCHANGE:
@@ -118,14 +145,26 @@ LRESULT App::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
       return TRUE;
 
     case WM_WTSSESSION_CHANGE:
-      if (wparam == WTS_SESSION_LOCK || wparam == WTS_SESSION_UNLOCK) {
-        session_locked_ = wparam == WTS_SESSION_LOCK;
-        UpdateSampling();
+      switch (wparam) {
+        case WTS_SESSION_LOCK:
+        case WTS_SESSION_UNLOCK:
+          session_locked_ = wparam == WTS_SESSION_LOCK;
+          break;
+        case WTS_CONSOLE_DISCONNECT:
+        case WTS_REMOTE_DISCONNECT:
+        case WTS_CONSOLE_CONNECT:
+        case WTS_REMOTE_CONNECT:
+          // Fast user switching and Remote Desktop: nobody sees a disconnected session.
+          session_connected_ = wparam == WTS_CONSOLE_CONNECT || wparam == WTS_REMOTE_CONNECT;
+          break;
+        default:
+          return 0;
       }
+      UpdateSampling();
       return 0;
 
     case kMsgOpenTaskManager:
-      ShellExecuteW(nullptr, nullptr, L"taskmgr.exe", nullptr, nullptr, SW_SHOWNORMAL);
+      OpenTaskManager();
       return 0;
 
     case kMsgShowMenu:
@@ -153,7 +192,7 @@ bool App::OnCreate() {
 void App::OnDestroy() {
   sampler_.Stop();
   overlay_.Destroy();
-  if (retrying_attach_) KillTimer(hwnd_, kRetryTimerId);
+  CancelAttachRetry();
   display_notification_.reset();
   if (session_notification_) WTSUnRegisterSessionNotification(hwnd_);
 }
@@ -163,29 +202,41 @@ void App::OnSample() {
   if (overlay_.alive() && !IsWindow(taskbar_.window())) {
     // Explorer went away without our window being destroyed first.
     overlay_.Destroy();
-    Attach();
+    ScheduleAttachRetry();
   }
   overlay_.Show(cells_, taskbar_);
 }
 
 void App::Attach() {
   if (taskbar_.Locate() && overlay_.Create(instance_, taskbar_, hwnd_)) {
-    if (retrying_attach_) {
-      KillTimer(hwnd_, kRetryTimerId);
-      retrying_attach_ = false;
-    }
+    CancelAttachRetry();
     log::Info(L"attached to the taskbar");
     overlay_.Show(cells_, taskbar_);
     return;
   }
-  if (!retrying_attach_) {
-    log::Info(L"taskbar unavailable, retrying every %u s", kRetryMs / 1000);
-    SetCoalescableTimer(hwnd_, kRetryTimerId, kRetryMs, nullptr, kRetryToleranceMs);
-    retrying_attach_ = true;
-  }
+  ScheduleAttachRetry();
 }
 
-void App::UpdateSampling() { sampler_.SetActive(display_on_ && !session_locked_); }
+void App::ScheduleAttachRetry() {
+  if (retry_delay_ms_ == 0) {
+    log::Info(L"taskbar unavailable, retrying every %u to %u s", kFirstRetryMs / 1000,
+              kMaxRetryMs / 1000);
+    retry_delay_ms_ = kFirstRetryMs;
+  } else {
+    retry_delay_ms_ = std::min(retry_delay_ms_ * 2, kMaxRetryMs);
+  }
+  SetCoalescableTimer(hwnd_, kRetryTimerId, retry_delay_ms_, nullptr, retry_delay_ms_ / 4);
+}
+
+void App::CancelAttachRetry() {
+  if (retry_delay_ms_ == 0) return;
+  KillTimer(hwnd_, kRetryTimerId);
+  retry_delay_ms_ = 0;
+}
+
+void App::UpdateSampling() {
+  sampler_.SetActive(display_on_ && !session_locked_ && session_connected_);
+}
 
 void App::ShowMenu(POINT point) {
   HMENU menu = CreatePopupMenu();

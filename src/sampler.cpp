@@ -17,6 +17,8 @@ namespace {
 constexpr LONG kPeriodMs = TBM_SAMPLE_PERIOD_MS;
 // Lets Windows batch this wakeup with others; larger is cheaper, 500 ms is still invisible.
 constexpr ULONG kTolerableDelayMs = 500;
+// Longest wait for the thread at exit; a sample normally takes a few milliseconds.
+constexpr DWORD kStopTimeoutMs = 3000;
 
 bool FullScreenAppInFront() {
   QUERY_USER_NOTIFICATION_STATE state;
@@ -47,7 +49,15 @@ bool Sampler::Start(HWND target, UINT message) {
 void Sampler::Stop() {
   if (!thread_) return;
   SetEvent(stop_event_.get());
-  WaitForSingleObject(thread_.get(), INFINITE);
+  if (WaitForSingleObject(thread_.get(), kStopTimeoutMs) == WAIT_TIMEOUT) {
+    // A sensor read is stuck in a driver. Stop is only called on the way out, so let process
+    // exit end the thread instead of hanging here; its handles must stay open until then.
+    log::Error(L"sampler: thread did not stop within %lu ms", kStopTimeoutMs);
+    thread_.release();
+    stop_event_.release();
+    wake_event_.release();
+    return;
+  }
   thread_.reset();
   stop_event_.reset();
   wake_event_.reset();
