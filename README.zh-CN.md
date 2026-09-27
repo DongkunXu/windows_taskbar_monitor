@@ -4,10 +4,7 @@
 
 在 Windows 11 任务栏左侧空白处显示两行硬件读数：
 
-```
-[芯片] 12%    [速度表] 1.8GHz    [温度计] 54°C
-[闪电] 5.2W   [电池]   −8.4W     [内存条] 61%
-```
+![Windows 11 任务栏上的 Taskbar Monitor](assets/screenshot.png)
 
 每个数值前有一个灰色小图标标明含义。第一行依次是 CPU 占用、实际频率、温度；第二行依次是 CPU 封装功耗、电池功率（`−` 放电，即整机功耗；`+` 充电；`AC` 表示接电且不充不放）、内存占用。
 
@@ -72,6 +69,7 @@ ctest --preset release
 src/        源代码
 res/        manifest 与版本资源
 tests/      单元测试
+assets/     README 图片
 ```
 
 ## 许可证

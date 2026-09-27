@@ -1,2 +1,4 @@
 # LF everywhere, in the repository and in working copies, whatever core.autocrlf says.
 * text=auto eol=lf
+
+*.png binary

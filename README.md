@@ -4,10 +4,7 @@
 
 Two rows of hardware readings in the empty left part of the Windows 11 taskbar:
 
-```
-[chip] 12%     [gauge] 1.8GHz     [thermometer] 54°C
-[bolt] 5.2W    [battery] −8.4W    [memory] 61%
-```
+![Taskbar Monitor on the Windows 11 taskbar](assets/screenshot.png)
 
 Each value has a faint icon that tells what it is. Top row: CPU usage, actual clock, temperature. Bottom row: CPU package power, battery power (`−` discharging, which is the whole system's draw; `+` charging; `AC` when on AC with no flow), memory usage.
 
@@ -72,6 +69,7 @@ The executable is `build/release/TaskbarMonitor.exe`; use the `debug` preset for
 src/        Source code
 res/        Manifest and version resource
 tests/      Unit tests
+assets/     README images
 ```
 
 ## License
