@@ -27,6 +27,8 @@ The readout is a layered child window of the taskbar, so it hides and moves toge
 
 For transparent taskbars (e.g. with TranslucentTB), both ends of the taskbar get a soft shade behind the readout and behind the tray icons and clock: darkest in the bottom corners and fading out diagonally toward the middle and the top edge, so white text stays readable on a bright wallpaper. The shade sits beneath Explorer's own content, so it never dims icons, and a taskbar with an opaque background covers it. It is redrawn only when the taskbar's size or theme changes.
 
+Static content wears OLED panels, so the readout's white is drawn at about 85% brightness, and the readout drifts around its spot by one step (1/96 inch, 2 pixels at 200% scaling) every 3 minutes, so its thin glyph edges don't keep wearing the same pixels. Drifting only moves the window; nothing is redrawn for it.
+
 ## Limitations
 
 - The temperature is an ACPI thermal zone, whose meaning is firmware-defined. On most laptops it follows CPU load but is smoother than the CPU package temperature.

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cwchar>
+#include <iterator>
 #include <utility>
 
 #include "log.h"
@@ -35,6 +36,17 @@ constexpr wchar_t kIcons[kRows * kColumns] = {
 constexpr COLORREF kIconColor = RGB(150, 150, 150);
 constexpr COLORREF kValueColor = RGB(255, 255, 255);
 
+// Burn-in care on OLED panels, where the readout is static content that stays in one place for
+// hours. White is drawn at about 85% brightness: still opaque, so the text stays crisp, but its
+// pixels age more slowly. And the whole readout orbits a 3x3 grid in kOrbitStepDip steps, one step
+// every kOrbitPeriodMs, so glyph edges, only a few pixels wide, don't wear the same pixels.
+constexpr uint32_t kWhiteLevel = 217;
+constexpr int kOrbitStepDip = 1;
+constexpr ULONGLONG kOrbitPeriodMs = 3 * 60 * 1000;
+// A closed walk in unit steps: every position gets the same share of time.
+constexpr POINT kOrbit[] = {{0, 0},  {1, 0},   {1, 1},  {0, 1}, {-1, 1},
+                            {-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
+
 // Background pixels: alpha 1 is invisible but keeps the whole rect hit-testable for clicks.
 constexpr uint32_t kBackgroundPixel = 0x01000000;
 
@@ -45,6 +57,14 @@ HFONT CreateUiFont(const wchar_t* face, UINT dpi) {
                      DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
                      ANTIALIASED_QUALITY,  // Grayscale: ClearType can't do transparency.
                      DEFAULT_PITCH, face);
+}
+
+// The readout's current offset from its placement. Derived from the clock, so the refresh that
+// already happens every sample moves it, and no timer of its own is needed.
+POINT OrbitOffset(UINT dpi) {
+  const POINT step = kOrbit[(GetTickCount64() / kOrbitPeriodMs) % std::size(kOrbit)];
+  const int unit = Scale(kOrbitStepDip, dpi);
+  return {step.x * unit, step.y * unit};
 }
 
 int TextWidth(HDC dc, const wchar_t* text, int length) {
@@ -104,11 +124,14 @@ void Overlay::Show(const Cells& cells, const Taskbar& taskbar) {
   RECT rect;
   if (!taskbar.Place(content_width_, &rect)) return Hide();
 
+  // The orbit only moves the window: the pixels stay as they are.
+  const POINT offset = OrbitOffset(dpi);
   const bool moved = !EqualRect(&rect, &rect_);
-  if (moved) {
-    SetWindowPos(hwnd_, nullptr, rect.left, rect.top, rect.right - rect.left,
+  if (moved || offset.x != offset_.x || offset.y != offset_.y) {
+    SetWindowPos(hwnd_, nullptr, rect.left + offset.x, rect.top + offset.y, rect.right - rect.left,
                  rect.bottom - rect.top, SWP_NOZORDER | SWP_NOACTIVATE);
     rect_ = rect;
+    offset_ = offset;
   }
   const bool light_theme = taskbar.light_theme();
   if (stale_ || moved || light_theme != light_theme_ || cells != shown_) {
@@ -235,7 +258,8 @@ bool Overlay::Render(const Cells& cells, bool light_theme) {
     } else if (light_theme) {
       pixels_[i] = coverage << 24;  // Black.
     } else {
-      pixels_[i] = coverage << 24 | coverage << 16 | coverage << 8 | coverage;  // White.
+      const uint32_t white = coverage * kWhiteLevel / 255;
+      pixels_[i] = coverage << 24 | white << 16 | white << 8 | white;
     }
   }
 

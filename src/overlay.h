@@ -13,7 +13,8 @@ class Taskbar;
 
 // The readout: a layered child window of the taskbar, drawn with per-pixel alpha through
 // UpdateLayeredWindow. Explorer moves, hides and clips it together with the taskbar. Each cell is a
-// faint icon followed by its value.
+// faint icon followed by its value. Static content wears OLED panels, so the readout is drawn
+// slightly dimmed and drifts by a pixel or two every few minutes.
 //
 // GDI resources are fixed in number (two fonts, one memory DC, one DIB) and rebuilt only when the
 // DPI or window size changes.
@@ -30,7 +31,7 @@ class Overlay {
   bool Create(HINSTANCE instance, const Taskbar& taskbar, HWND owner);
   void Destroy();
   bool alive() const { return hwnd_ != nullptr; }
-  // Right edge in taskbar client coordinates, or 0 while hidden.
+  // Right edge of the placement in taskbar client coordinates, without the drift; 0 while hidden.
   int right() const { return visible_ ? rect_.right : 0; }
 
   // Positions and redraws as needed. Does nothing when neither the text, the placement, the DPI
@@ -68,7 +69,8 @@ class Overlay {
 
   // What is currently on screen.
   Cells shown_{};
-  RECT rect_{};
+  RECT rect_{};     // Placement, in taskbar client coordinates.
+  POINT offset_{};  // Current drift from the placement.
   bool light_theme_ = false;
   bool visible_ = false;
   bool stale_ = true;              // Forces the next Show() to redraw.
