@@ -30,6 +30,8 @@ class Overlay {
   bool Create(HINSTANCE instance, const Taskbar& taskbar, HWND owner);
   void Destroy();
   bool alive() const { return hwnd_ != nullptr; }
+  // Right edge in taskbar client coordinates, or 0 while hidden.
+  int right() const { return visible_ ? rect_.right : 0; }
 
   // Positions and redraws as needed. Does nothing when neither the text, the placement, the DPI
   // nor the theme changed since the last call.

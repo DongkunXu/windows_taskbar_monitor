@@ -37,6 +37,7 @@ add_executable(TaskbarMonitor WIN32
   src/overlay.cpp
   src/sampler.cpp
   src/sensors.cpp
+  src/shade.cpp
   src/taskbar.cpp
   res/app.rc)
 configure_file(src/version.h.in generated/version.h @ONLY)

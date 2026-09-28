@@ -1,5 +1,7 @@
 #include "taskbar.h"
 
+#include <algorithm>
+
 namespace tbm {
 namespace {
 
@@ -19,6 +21,11 @@ DWORD ReadUserDword(const wchar_t* key, const wchar_t* name, DWORD fallback) {
   return value;
 }
 
+HWND FindChild(HWND parent, HWND* cached, const wchar_t* class_name) {
+  if (!*cached || !IsWindow(*cached)) *cached = FindWindowExW(parent, nullptr, class_name, nullptr);
+  return *cached;
+}
+
 }  // namespace
 
 void Taskbar::ReloadSettings() {
@@ -30,8 +37,13 @@ void Taskbar::ReloadSettings() {
 
 bool Taskbar::Locate() {
   tray_ = FindWindowW(L"Shell_TrayWnd", nullptr);
-  start_ = nullptr;
+  start_ = notify_ = island_ = nullptr;
   return tray_ != nullptr;
+}
+
+HWND Taskbar::island() const {
+  return tray_ ? FindChild(tray_, &island_, L"Windows.UI.Composition.DesktopWindowContentBridge")
+               : nullptr;
 }
 
 UINT Taskbar::dpi() const {
@@ -39,21 +51,38 @@ UINT Taskbar::dpi() const {
   return dpi ? dpi : USER_DEFAULT_SCREEN_DPI;
 }
 
-bool Taskbar::Place(int width, RECT* rect) const {
-  RECT tray;
-  if (!tray_ || left_aligned_ || !GetWindowRect(tray_, &tray)) return false;
-  if (tray.right - tray.left <= tray.bottom - tray.top) return false;  // Vertical taskbar.
+bool Taskbar::BottomRect(RECT* tray) const {
+  if (!tray_ || !GetWindowRect(tray_, tray)) return false;
+  if (tray->right - tray->left <= tray->bottom - tray->top) return false;  // Vertical taskbar.
 
   MONITORINFO monitor{};
   monitor.cbSize = sizeof(monitor);
   if (!GetMonitorInfoW(MonitorFromWindow(tray_, MONITOR_DEFAULTTONEAREST), &monitor)) return false;
-  if (tray.top + tray.bottom < monitor.rcMonitor.top + monitor.rcMonitor.bottom) {
-    return false;  // Top taskbar.
-  }
+  return tray->top + tray->bottom >= monitor.rcMonitor.top + monitor.rcMonitor.bottom;  // Not top.
+}
 
-  if (!start_ || !IsWindow(start_)) start_ = FindWindowExW(tray_, nullptr, L"Start", nullptr);
+bool Taskbar::Size(SIZE* size) const {
+  RECT tray;
+  if (!BottomRect(&tray)) return false;
+  *size = {tray.right - tray.left, tray.bottom - tray.top};
+  return true;
+}
+
+int Taskbar::NotifyAreaWidth() const {
+  RECT tray, notify;
+  if (!tray_ || !GetWindowRect(tray_, &tray)) return 0;
+  const HWND window = FindChild(tray_, &notify_, L"TrayNotifyWnd");
+  if (!window || !GetWindowRect(window, &notify)) return 0;
+  return std::max(0L, tray.right - notify.left);
+}
+
+bool Taskbar::Place(int width, RECT* rect) const {
+  RECT tray;
+  if (left_aligned_ || !BottomRect(&tray)) return false;
+
   RECT start;
-  if (!start_ || !GetWindowRect(start_, &start)) return false;
+  const HWND start_window = FindChild(tray_, &start_, L"Start");
+  if (!start_window || !GetWindowRect(start_window, &start)) return false;
 
   const int margin = MulDiv(kEdgeMarginDip, static_cast<int>(dpi()), USER_DEFAULT_SCREEN_DPI);
   const int start_left = start.left - tray.left;

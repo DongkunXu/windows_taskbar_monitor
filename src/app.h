@@ -5,6 +5,7 @@
 #include "format.h"
 #include "overlay.h"
 #include "sampler.h"
+#include "shade.h"
 #include "taskbar.h"
 #include "win_handle.h"
 
@@ -25,6 +26,8 @@ class App {
   void OnDestroy();
   void OnSample();
   void Attach();
+  void Detach();
+  void Refresh();
   void ScheduleAttachRetry();
   void CancelAttachRetry();
   void UpdateSampling();
@@ -36,6 +39,8 @@ class App {
 
   Taskbar taskbar_;
   Overlay overlay_;
+  Shade left_shade_{Shade::Edge::kLeft};
+  Shade right_shade_{Shade::Edge::kRight};
   Sampler sampler_;
   Cells cells_ = FormatMetrics({});
 

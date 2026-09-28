@@ -56,7 +56,8 @@ int App::Run(HINSTANCE instance) {
   window_class.lpfnWndProc = &App::WindowProc;
   window_class.hInstance = instance;
   window_class.lpszClassName = kClassName;
-  if (!RegisterClassExW(&window_class) || !Overlay::RegisterWindowClass(instance)) {
+  if (!RegisterClassExW(&window_class) || !Overlay::RegisterWindowClass(instance) ||
+      !Shade::RegisterWindowClass(instance)) {
     log::Error(L"RegisterClassEx failed: %lu", GetLastError());
     return 1;
   }
@@ -92,7 +93,7 @@ LRESULT CALLBACK App::WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
 LRESULT App::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
   if (message == taskbar_created_message_ && message != 0) {
     log::Info(L"taskbar recreated");
-    overlay_.Destroy();
+    Detach();
     Attach();
     return 0;
   }
@@ -113,6 +114,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
     case kMsgOverlayLost:
       // Explorer usually announces its new taskbar with TaskbarCreated; the retry covers the rest.
       log::Info(L"overlay lost");
+      Detach();
       ScheduleAttachRetry();
       return 0;
 
@@ -125,12 +127,12 @@ LRESULT App::HandleMessage(UINT message, WPARAM wparam, LPARAM lparam) {
 
     case WM_SETTINGCHANGE:
       taskbar_.ReloadSettings();
-      overlay_.Show(cells_, taskbar_);
+      Refresh();
       return 0;
 
     case WM_DISPLAYCHANGE:
     case WM_DPICHANGED:
-      overlay_.Show(cells_, taskbar_);
+      Refresh();
       return 0;
 
     case WM_POWERBROADCAST:
@@ -191,7 +193,7 @@ bool App::OnCreate() {
 
 void App::OnDestroy() {
   sampler_.Stop();
-  overlay_.Destroy();
+  Detach();
   CancelAttachRetry();
   display_notification_.reset();
   if (session_notification_) WTSUnRegisterSessionNotification(hwnd_);
@@ -201,20 +203,36 @@ void App::OnSample() {
   cells_ = FormatMetrics(sampler_.Latest());
   if (overlay_.alive() && !IsWindow(taskbar_.window())) {
     // Explorer went away without our window being destroyed first.
-    overlay_.Destroy();
+    Detach();
     ScheduleAttachRetry();
   }
-  overlay_.Show(cells_, taskbar_);
+  Refresh();
 }
 
 void App::Attach() {
   if (taskbar_.Locate() && overlay_.Create(instance_, taskbar_, hwnd_)) {
     CancelAttachRetry();
+    // The shades are cosmetic: the readout works without them.
+    left_shade_.Create(instance_, taskbar_);
+    right_shade_.Create(instance_, taskbar_);
     log::Info(L"attached to the taskbar");
-    overlay_.Show(cells_, taskbar_);
+    Refresh();
     return;
   }
   ScheduleAttachRetry();
+}
+
+void App::Detach() {
+  overlay_.Destroy();
+  left_shade_.Destroy();
+  right_shade_.Destroy();
+}
+
+// Cheap when nothing changed: each component redraws only what moved or changed.
+void App::Refresh() {
+  overlay_.Show(cells_, taskbar_);
+  left_shade_.Show(taskbar_, overlay_.right());
+  right_shade_.Show(taskbar_, taskbar_.NotifyAreaWidth());
 }
 
 void App::ScheduleAttachRetry() {

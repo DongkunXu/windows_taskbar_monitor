@@ -9,7 +9,7 @@ Two rows of hardware readings in the empty left part of the Windows 11 taskbar:
 Each value has a faint icon that tells what it is. Top row: CPU usage, actual clock, temperature. Bottom row: CPU package power, battery power (`−` discharging, which is the whole system's draw; `+` charging; `AC` when on AC with no flow), memory usage.
 
 - No driver, no elevation, no third-party software such as HWiNFO: all data comes from standard Windows interfaces.
-- Tiny footprint: a 270 KB executable with two resident threads, sampling every 2 s; sampling stops while the display is off, the session is locked, or a full-screen app is in front.
+- Tiny footprint: a 340 KB executable with two resident threads, sampling every 2 s; sampling stops while the display is off, the session is locked, or a full-screen app is in front.
 - Leaves nothing behind: the only file on disk is a log capped at 128 KB.
 
 ## How it works
@@ -24,6 +24,8 @@ Each value has a faint icon that tells what it is. Top row: CPU usage, actual cl
 | Memory | `GlobalMemoryStatusEx` |
 
 The readout is a layered child window of the taskbar, so it hides and moves together with it (auto-hide, full-screen apps, Start menu). Sampling runs on its own thread so the taskbar never waits on it. Unavailable values read `--`.
+
+For transparent taskbars (e.g. with TranslucentTB), both ends of the taskbar get a soft shade behind the readout and behind the tray icons and clock, fading out toward the middle, so white text stays readable on a bright wallpaper. The shade sits beneath Explorer's own content, so it never dims icons, and a taskbar with an opaque background covers it. It is redrawn only when the taskbar's size or theme changes.
 
 ## Limitations
 
