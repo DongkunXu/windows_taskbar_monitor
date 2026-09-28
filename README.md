@@ -25,7 +25,7 @@ Each value has a faint icon that tells what it is. Top row: CPU usage, actual cl
 
 The readout is a layered child window of the taskbar, so it hides and moves together with it (auto-hide, full-screen apps, Start menu). Sampling runs on its own thread so the taskbar never waits on it. Unavailable values read `--`.
 
-For transparent taskbars (e.g. with TranslucentTB), both ends of the taskbar get a soft shade behind the readout and behind the tray icons and clock, fading out toward the middle, so white text stays readable on a bright wallpaper. The shade sits beneath Explorer's own content, so it never dims icons, and a taskbar with an opaque background covers it. It is redrawn only when the taskbar's size or theme changes.
+For transparent taskbars (e.g. with TranslucentTB), both ends of the taskbar get a soft shade behind the readout and behind the tray icons and clock: darkest in the bottom corners and fading out diagonally toward the middle and the top edge, so white text stays readable on a bright wallpaper. The shade sits beneath Explorer's own content, so it never dims icons, and a taskbar with an opaque background covers it. It is redrawn only when the taskbar's size or theme changes.
 
 ## Limitations
 

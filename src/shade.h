@@ -7,7 +7,8 @@ namespace tbm {
 class Taskbar;
 
 // A soft shade at one end of the taskbar that keeps text readable on a transparent taskbar
-// (e.g. TranslucentTB): full strength behind that end's content, then a long fade to nothing.
+// (e.g. TranslucentTB): darkest in that end's bottom corner and fading out diagonally, toward
+// the middle and the top edge, across about the width of the content there.
 //
 // It is a click-through layered child of the taskbar placed below the taskbar's XAML island, so
 // Explorer's own icons and text stay on top of it and an opaque taskbar background hides it.
@@ -27,13 +28,13 @@ class Shade {
   bool Create(HINSTANCE instance, const Taskbar& taskbar);
   void Destroy();
 
-  // Shades the first `content` pixels from the edge fully and fades out beyond them; 0 hides.
+  // Reaches about `content` pixels in from the edge; 0 hides.
   void Show(const Taskbar& taskbar, int content);
 
  private:
   static LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
-  bool Render(SIZE size, int content, UINT dpi, bool light_theme);
+  bool Render(SIZE size, int content, bool light_theme);
   void Hide();
 
   const Edge edge_;

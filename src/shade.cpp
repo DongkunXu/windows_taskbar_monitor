@@ -13,24 +13,16 @@ namespace {
 
 constexpr wchar_t kClassName[] = L"TaskbarMonitorShade";
 
-// Strongest opacity, reached behind the content at the bottom of the taskbar.
-constexpr float kStrength = 0.55f;
-// Full strength continues this far past the content, then fades out over kFadeDip.
-constexpr int kMarginDip = 8;
-constexpr int kFadeDip = 160;
-// Opacity at the top edge relative to the bottom, and the height (as a fraction of the taskbar)
-// from which it is full: a lighter top keeps the shade from ending in a hard line where the
-// taskbar meets the desktop.
-constexpr float kTopStrength = 0.2f;
-constexpr float kFullFromHeight = 0.6f;
+// The shade is an elliptical gradient centered on the bottom corner at its end of the taskbar,
+// reaching kReach times the content's width across and exactly the taskbar's height up, so it
+// has faded to nothing at the top edge, where the taskbar meets the desktop.
+constexpr float kStrength = 0.8f;  // Opacity in the corner.
+constexpr float kReach = 1.8f;
 
-int Scale(int dip, UINT dpi) { return MulDiv(dip, static_cast<int>(dpi), USER_DEFAULT_SCREEN_DPI); }
-
-// Smootherstep: flat at both ends, so neither the start nor the end of a fade shows as an edge.
-float Ease(float t) {
-  t = std::clamp(t, 0.0f, 1.0f);
-  return t * t * t * (t * (t * 6 - 15) + 10);
-}
+// Opacity at `r`, the distance from the corner relative to the ellipse. It still darkens right up
+// to the corner: a curve that flattens there reads as a dark band with a lighter strip below it.
+// It ends flat at r = 1, so the outline never shows.
+float Falloff(float r) { return r < 1 ? (1 - r) * (1 - r) * (1 + 1.5f * r) : 0; }
 
 // True when `window` comes after `above` in their parent's z-order, i.e. is drawn below it.
 bool IsBelow(HWND window, HWND above) {
@@ -81,8 +73,7 @@ void Shade::Show(const Taskbar& taskbar, int content) {
   const HWND island = taskbar.island();
   if (content <= 0 || !island || !taskbar.Size(&bar)) return Hide();
 
-  const UINT dpi = taskbar.dpi();
-  const int width = std::min<int>(bar.cx, content + Scale(kMarginDip + kFadeDip, dpi));
+  const int width = std::min<int>(bar.cx, static_cast<int>(std::ceil(content * kReach)));
   const RECT rect =
       edge_ == Edge::kLeft ? RECT{0, 0, width, bar.cy} : RECT{bar.cx - width, 0, bar.cx, bar.cy};
   const bool moved = !EqualRect(&rect, &rect_);
@@ -92,7 +83,7 @@ void Shade::Show(const Taskbar& taskbar, int content) {
   }
   const bool light_theme = taskbar.light_theme();
   if (stale_ || moved || content != content_ || light_theme != light_theme_) {
-    if (!Render({width, bar.cy}, content, dpi, light_theme)) return Hide();
+    if (!Render({width, bar.cy}, content, light_theme)) return Hide();
     content_ = content;
     light_theme_ = light_theme;
     stale_ = false;
@@ -114,7 +105,7 @@ void Shade::Hide() {
   visible_ = false;
 }
 
-bool Shade::Render(SIZE size, int content, UINT dpi, bool light_theme) {
+bool Shade::Render(SIZE size, int content, bool light_theme) {
   BITMAPINFO info{};
   info.bmiHeader.biSize = sizeof(info.bmiHeader);
   info.bmiHeader.biWidth = size.cx;
@@ -132,19 +123,15 @@ bool Shade::Render(SIZE size, int content, UINT dpi, bool light_theme) {
     return false;
   }
 
-  // Opacity is a horizontal fade times a vertical one, in premultiplied black (white on a light
-  // taskbar, whose text is black).
+  // Premultiplied black, or white on a light taskbar, whose text is black.
   auto* pixels = static_cast<uint32_t*>(bits);
-  const float full = static_cast<float>(content + Scale(kMarginDip, dpi));
-  const float fade = static_cast<float>(Scale(kFadeDip, dpi));
+  const float reach = content * kReach;
   for (int y = 0; y < size.cy; ++y) {
-    const float height = (y + 0.5f) / static_cast<float>(size.cy);
-    const float vertical = kTopStrength + (1 - kTopStrength) * Ease(height / kFullFromHeight);
+    const float up = (size.cy - y - 0.5f) / static_cast<float>(size.cy);
     for (int x = 0; x < size.cx; ++x) {
-      const float distance = edge_ == Edge::kLeft ? x + 0.5f : size.cx - x - 0.5f;
-      const float horizontal = 1 - Ease((distance - full) / fade);
-      const auto alpha =
-          static_cast<uint32_t>(std::lround(255 * kStrength * horizontal * vertical));
+      const float across = (edge_ == Edge::kLeft ? x + 0.5f : size.cx - x - 0.5f) / reach;
+      const float opacity = kStrength * Falloff(std::sqrt(across * across + up * up));
+      const auto alpha = static_cast<uint32_t>(std::lround(255 * opacity));
       *pixels++ = light_theme ? alpha * 0x01010101u : alpha << 24;
     }
   }
