@@ -2,6 +2,8 @@
 
 #include <windows.h>
 
+#include <shlobj.h>
+
 #include <cstdarg>
 #include <cwchar>
 #include <iterator>
@@ -67,15 +69,15 @@ void Write(const wchar_t* level, const wchar_t* format, va_list args) {
 }  // namespace
 
 void Init() {
-  wchar_t base[MAX_PATH];
-  const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH);
-  if (length == 0 || length >= MAX_PATH) return;  // No writable location: debugger output only.
-  if (_snwprintf_s(g_dir, MAX_PATH, _TRUNCATE, L"%ls\\TaskbarMonitor", base) < 0 ||
-      _snwprintf_s(g_path, MAX_PATH, _TRUNCATE, L"%ls\\taskbar-monitor.log", g_dir) < 0 ||
-      _snwprintf_s(g_rotated_path, MAX_PATH, _TRUNCATE, L"%ls.1", g_path) < 0) {
-    return;
-  }
-  g_file_enabled = true;
+  // The known-folder API rather than %LOCALAPPDATA%, which the parent process controls.
+  wchar_t* base = nullptr;
+  const bool found = SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &base));
+  const bool built =
+      found && _snwprintf_s(g_dir, MAX_PATH, _TRUNCATE, L"%ls\\TaskbarMonitor", base) > 0 &&
+      _snwprintf_s(g_path, MAX_PATH, _TRUNCATE, L"%ls\\taskbar-monitor.log", g_dir) > 0 &&
+      _snwprintf_s(g_rotated_path, MAX_PATH, _TRUNCATE, L"%ls.1", g_path) > 0;
+  CoTaskMemFree(base);
+  g_file_enabled = built;  // Otherwise debugger output only.
 }
 
 void Info(const wchar_t* format, ...) {
