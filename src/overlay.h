@@ -14,7 +14,7 @@ class Taskbar;
 // The readout: a layered child window of the taskbar, drawn with per-pixel alpha through
 // UpdateLayeredWindow. Explorer moves, hides and clips it together with the taskbar. Each cell is a
 // faint icon followed by its value. Static content wears OLED panels, so the readout is drawn
-// slightly dimmed and drifts by a pixel or two every few minutes.
+// slightly dimmed and slowly drifts a few pixels around its place.
 //
 // GDI resources are fixed in number (two fonts, one memory DC, one DIB) and rebuilt only when the
 // DPI or window size changes.

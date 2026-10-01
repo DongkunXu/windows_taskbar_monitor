@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cwchar>
-#include <iterator>
 #include <utility>
 
 #include "log.h"
@@ -38,14 +37,13 @@ constexpr COLORREF kValueColor = RGB(255, 255, 255);
 
 // Burn-in care on OLED panels, where the readout is static content that stays in one place for
 // hours. White is drawn at about 85% brightness: still opaque, so the text stays crisp, but its
-// pixels age more slowly. And the whole readout orbits a 3x3 grid in kOrbitStepDip steps, one step
-// every kOrbitPeriodMs, so glyph edges, only a few pixels wide, don't wear the same pixels.
+// pixels age more slowly. And the whole readout wanders up to kOrbitRadius steps of kOrbitStepDip
+// each way, one step every kOrbitPeriodMs, so the strokes of its static parts (icons, units),
+// only a few pixels wide, spread their wear over several times their width.
 constexpr uint32_t kWhiteLevel = 217;
+constexpr int kOrbitRadius = 2;
 constexpr int kOrbitStepDip = 1;
 constexpr ULONGLONG kOrbitPeriodMs = 3 * 60 * 1000;
-// A closed walk in unit steps: every position gets the same share of time.
-constexpr POINT kOrbit[] = {{0, 0},  {1, 0},   {1, 1},  {0, 1}, {-1, 1},
-                            {-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
 
 // Background pixels: alpha 1 is invisible but keeps the whole rect hit-testable for clicks.
 constexpr uint32_t kBackgroundPixel = 0x01000000;
@@ -59,12 +57,19 @@ HFONT CreateUiFont(const wchar_t* face, UINT dpi) {
                      DEFAULT_PITCH, face);
 }
 
-// The readout's current offset from its placement. Derived from the clock, so the refresh that
-// already happens every sample moves it, and no timer of its own is needed.
+// The readout's current offset from its placement. It snakes row by row across the grid and back,
+// one unit step at a time, so it never jumps; only the two end corners get half the time of the
+// other positions. Derived from the clock, so the refresh that already happens every sample moves
+// it, and no timer of its own is needed.
 POINT OrbitOffset(UINT dpi) {
-  const POINT step = kOrbit[(GetTickCount64() / kOrbitPeriodMs) % std::size(kOrbit)];
+  constexpr int kSide = 2 * kOrbitRadius + 1;
+  constexpr ULONGLONG kCycle = 2 * (kSide * kSide - 1);
+  const auto step = static_cast<int>(GetTickCount64() / kOrbitPeriodMs % kCycle);
+  const int index = step < kSide * kSide ? step : static_cast<int>(kCycle) - step;
+  const int row = index / kSide;
+  const int column = row % 2 == 0 ? index % kSide : kSide - 1 - index % kSide;
   const int unit = Scale(kOrbitStepDip, dpi);
-  return {step.x * unit, step.y * unit};
+  return {(column - kOrbitRadius) * unit, (row - kOrbitRadius) * unit};
 }
 
 int TextWidth(HDC dc, const wchar_t* text, int length) {
